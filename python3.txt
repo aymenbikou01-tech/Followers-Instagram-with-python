@@ -1,0 +1,186 @@
+from playwright.sync_api import sync_playwright
+from colorama import Fore, init
+import requests
+import time
+import threading
+
+init(autoreset=True)
+
+LOGIN_URL = "https://www.instagram.com/accounts/login"
+STATUS = requests.get(LOGIN_URL).status_code
+KALI = "p"
+lol = "1010101001"
+
+def get_headers():
+    headers = {
+        'user-agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.127 Safari/537.36",
+        'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+        'accept': "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        'accept-language': "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        'accept-encoding': "gzip, deflate, br, zstd",
+        'referer': "https://www.instagram.com/",
+        'origin': "https://www.instagram.com",
+        'sec-ch-ua-platform': "Windows",
+        'sec-fetch-site': "cross-site",
+        'cache-control': "no-cache",
+        'sec-fetch-dest': "image",
+        'sec-ch-ua-mobile': "?0",
+        'sec-fetch-mode': "cors",
+        'X-Forwarded-For': lol,
+        'priority': "u=1, i",
+        'pragma': "no-cache"
+    }
+    return headers
+
+# Banner
+print(Fore.MAGENTA + r"""
+██╗███╗   ██╗███████╗████████╗ █████╗  ██████╗  ██████╗ ██╗     
+██║████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝ ██╔═══██╗██║     
+██║██╔██╗ ██║███████╗   ██║   ███████║██║  ███╗██║   ██║██║     
+██║██║╚██╗██║╚════██║   ██║   ██╔══██║██║   ██║██║   ██║██║     
+██║██║ ╚████║███████║   ██║   ██║  ██║╚██████╔╝╚██████╔╝███████╗
+╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝
+""")
+print(Fore.CYAN + "        INSTAGRAM FOLLOWER TOOL - LOCAL LAB")
+print(Fore.YELLOW + "                Status: READY")
+print(Fore.GREEN + "                Mode  : EDUCATIONAL")
+
+TARGET = input(f"{Fore.BLUE}target:> ")
+WORDLIST = input(f"{Fore.GREEN}Bot_CMB:> ")
+
+# Read all accounts
+all_accounts = []
+with open(WORDLIST, "r", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if ":" not in line:
+            continue
+        user, pwd = line.split(":", 1)
+        all_accounts.append((user, pwd))
+
+total_available = len(all_accounts)
+print(f"{Fore.YELLOW}Total accounts in file: {total_available}")
+
+total_to_process = int(input(f"{Fore.CYAN}How many accounts to process? (max {total_available}):> "))
+total_to_process = min(total_to_process, total_available)
+num_browsers = int(input(f"{Fore.CYAN}How many browsers to open at the same time?:> "))
+
+# Take only first 'total_to_process' accounts
+accounts = all_accounts[:total_to_process]
+
+# Round-robin distribution
+chunks = [[] for _ in range(num_browsers)]
+for idx, acc in enumerate(accounts):
+    browser_idx = idx % num_browsers
+    chunks[browser_idx].append(acc)
+
+# Shared counters
+bot_counter = 0
+counter_lock = threading.Lock()
+stats = {
+    "success": 0,
+    "captcha": 0,
+    "failed": 0,
+    "twofa": 0,
+    "unknown": 0
+}
+stats_lock = threading.Lock()
+
+def process_chunk(accounts_chunk, target):
+    global bot_counter
+    if not accounts_chunk:
+        return
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        for user, passwd in accounts_chunk:
+            with counter_lock:
+                bot_counter += 1
+                i = bot_counter
+
+            context = browser.new_context()
+            page = context.new_page()
+            try:
+                page.goto(LOGIN_URL)
+                time.sleep(1)
+                page.type('input[name="email"]', user, delay=90)
+                time.sleep(0.5)
+                page.type('input[name="pass"]', passwd, delay=100)
+                time.sleep(0.5)
+                page.get_by_role("button", name="Log in").first.click()
+                time.sleep(9)
+
+                if page.locator("text=The login information you entered is incorrect").count() > 0:
+                    with stats_lock:
+                        stats["failed"] += 1
+                    print(Fore.YELLOW + f"[Bot_{i}] " + Fore.BLUE + "Trying " + Fore.RED + "Username: " + Fore.RED + user
+                          + Fore.RED + " | Password: " + Fore.RED + passwd 
+                          + Fore.RED + " | apparen: " + Fore.RED + str(KALI) 
+                          + Fore.RED + " => Login Failed"
+                          + Fore.RED + " | Status: " + Fore.YELLOW + str(STATUS))
+
+                elif page.locator("text=Check your email").count() > 0:
+                    with stats_lock:
+                        stats["twofa"] += 1
+                    print(Fore.YELLOW + f"[Bot_{i}] " + Fore.BLUE + "Trying " + Fore.WHITE + "Username: " + Fore.RED + user
+                          + Fore.WHITE + " | Password: " + Fore.RED + passwd 
+                          + Fore.WHITE + " | apparen: " + Fore.YELLOW + str(KALI) 
+                          + Fore.RED + " => 2FA_Secure in This acc"
+                          + Fore.WHITE + " | Status: " + Fore.YELLOW + str(STATUS))
+
+                elif page.locator("text=Save your login info?").count() > 0:
+                    with stats_lock:
+                        stats["success"] += 1
+                    print(Fore.YELLOW + f"[Bot_{i}] " + Fore.BLUE + "Trying " + Fore.GREEN + "Username: " + Fore.GREEN + user
+                          + Fore.GREEN + " | Password: " + Fore.GREEN + passwd 
+                          + Fore.GREEN + " | apparen: " + Fore.GREEN + str(KALI) 
+                          + Fore.GREEN + " => Login Successfully"
+                          + Fore.GREEN + " | Status: " + Fore.YELLOW + str(STATUS))
+                    page.goto(f"https://www.instagram.com/{TARGET}/")
+                    page.get_by_role("button", name="Follow").first.click()
+                    time.sleep(2)
+
+                elif "captcha" in page.content().lower() or "recaptcha" in page.content().lower():
+                    with stats_lock:
+                        stats["captcha"] += 1
+                    print(Fore.YELLOW + f"[Bot_{i}] " + Fore.BLUE + "Trying " + Fore.MAGENTA + "Username: " + Fore.MAGENTA + user
+                          + Fore.MAGENTA + " | Password: " + Fore.MAGENTA + passwd 
+                          + Fore.MAGENTA + " | apparen: " + Fore.MAGENTA + str(KALI) 
+                          + Fore.MAGENTA + " => Captcha Detected"
+                          + Fore.MAGENTA + " | Status: " + Fore.YELLOW + str(STATUS))
+                else:
+                    with stats_lock:
+                        stats["unknown"] += 1
+                    print(Fore.YELLOW + f"[?] No known response for {user}")
+
+            except Exception:
+                with stats_lock:
+                    stats["unknown"] += 1
+                # silent as original
+            finally:
+                context.close()
+                time.sleep(1)
+        browser.close()
+
+# Launch threads
+threads = []
+for chunk in chunks:
+    if not chunk:
+        continue
+    t = threading.Thread(target=process_chunk, args=(chunk, TARGET))
+    t.start()
+    threads.append(t)
+
+for t in threads:
+    t.join()
+
+# Final summary
+print("\n" + "="*50)
+print(Fore.CYAN + "                 FINAL RESULT")
+print("="*50)
+print(f"{Fore.GREEN}✅ Login Success (followed) : {stats['success']}")
+print(f"{Fore.MAGENTA}🤖 Captcha Detected        : {stats['captcha']}")
+print(f"{Fore.RED}❌ Login Failed             : {stats['failed']}")
+print(f"{Fore.YELLOW}🔒 2FA / Check your email  : {stats['twofa']}")
+print(f"{Fore.WHITE}⚠️  Unknown response        : {stats['unknown']}")
+print(f"{Fore.BLUE}📊 Total processed          : {total_to_process}")
+print("="*50)
